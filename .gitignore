@@ -41,3 +41,16 @@ Icon
 Network Trash Folder
 Temporary Items
 .apdisk
+
+.idea/.name
+.idea/compiler.xml
+.idea/copyright/profiles_settings.xml
+.idea/encodings.xml
+.idea/libraries/SBT__org_scala_lang_scala_library_2_10_3.xml
+.idea/libraries/SBT__org_scala_lang_scala_swing_2_10_3.xml
+.idea/libraries/SBT___scala_compiler_bundle_2_10_3.xml
+.idea/workspace.xml
+.idea/vcs.xml
+.idea/misc.xml
+.idea/modules.xml
+.idea/modules/project-code-build.iml
