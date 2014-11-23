@@ -22,7 +22,13 @@ import scala.annotation.tailrec
  *
  * Have the following functionality:
  * 1. f(A, B): see Huffman.encode. Compress B based on statistical profile of A
- * 2. g(A, B):
+ * 2. g(A, B): see Huffman.decode. Expand B based on statistical profile of A
+ *             this function is the inverse of f(A, B).
+ *             this function takes the bit string B and maps variable length slices
+ *             of B to fixed length slices of the original file which the Huffman.CodeTree
+ *             is derived from.
+ * 3. g(A, f(B, B)): see TODO. First order mimic function.
+ *                   functional composition g of f.
  */
 
 
@@ -88,13 +94,15 @@ object Huffman {
   }
 
   @tailrec
-  def until(desiredCardinality: List[CodeTree] => Boolean, treeOp: List[CodeTree] => List[CodeTree])(trees: List[CodeTree]): List[CodeTree] =
-    if (desiredCardinality(trees)) trees
-    else until(desiredCardinality, combine)(combine(trees))
+  def until(targetOrder: List[CodeTree] => Boolean, treeOp: List[CodeTree] => List[CodeTree])(trees: List[CodeTree]): List[CodeTree] =
+    if (targetOrder(trees))
+      trees
+    else
+      until(targetOrder, combine)(combine(trees))
 
-  def createCodeTree(chars: List[Char])(desiredCardinality: List[CodeTree] => Boolean): CodeTree = {
+  def createCodeTree(chars: List[Char])(targetOrder: List[CodeTree] => Boolean): CodeTree = {
     val orderedLeaves = makeOrderedLeafList(times(chars))
-    until(desiredCardinality, combine)(orderedLeaves).head
+    until(targetOrder, combine)(orderedLeaves).head
   }
 
   /** Decoding */
@@ -112,9 +120,13 @@ object Huffman {
 
   def decode(tree: CodeTree, bits: List[Bit]): List[Char] = {
     def decoder(t: CodeTree, b: List[Bit]): List[Char] = t match {
-      case Fork(left, right, _, _) =>
-        if (b.head == 0) decoder(left, b.tail)
-        else decoder(right, b.tail)
+      case Fork(left, right, chars, _) =>
+        b match {
+          case Nil => "_TYLER_".toList ::: chars
+          case head :: tail =>
+            if (head == 0) decoder(left, tail)
+            else decoder(right, tail)
+        }
       case Leaf(char, _) =>
         b match {
           case head :: tail => char :: decoder(tree, b)
@@ -151,19 +163,19 @@ object Huffman {
     encoder(tree, text, Nil).reverse
   }
 
-  /** Encoding with CodeTable (memoize the tree) */
-  type CodeTable = List[(Char, List[Bit])]
+  /** Encoding with EncodeTable (memoize the tree) */
+  type EncodeTable = List[(Char, List[Bit])]
 
   @tailrec
-  def codeBits(table: CodeTable)(char: Char): List[Bit] = table match {
+  def codeBits(table: EncodeTable)(char: Char): List[Bit] = table match {
     case (c, bits) :: tail =>
       if (c == char) bits
       else codeBits(tail)(char)
     case Nil => Nil
   }
 
-  def convert(tree: CodeTree): CodeTable = {
-    def helper(t: CodeTree, acc: List[Bit]): CodeTable = t match {
+  def treeToEncodeTable(tree: CodeTree): EncodeTable = {
+    def helper(t: CodeTree, acc: List[Bit]): EncodeTable = t match {
       case Fork(l, r, chars, _) =>
         helper(l, 0 :: acc) ::: helper(r, 1 :: acc)
       case Leaf(c, _) =>
@@ -172,13 +184,51 @@ object Huffman {
     helper(tree, Nil)
   }
 
-  def mergeCodeTables(a: CodeTable, b: CodeTable): CodeTable = a ::: b
+  def mergeEncodeTables(a: EncodeTable, b: EncodeTable): EncodeTable = a ::: b
 
   def quickEncode(tree: CodeTree)(text: List[Char]): List[Bit] = {
-    val codeMap = Map(convert(tree):_*)
+    val codeMap = Map(treeToEncodeTable(tree):_*)
     text flatMap (c => codeMap(c))
   }
 
+  def charByWeightAndEncoding(xs: List[Char]): String = {
+    val codeTree = Huffman.createCodeTree(xs)(Huffman.singleton)
+    val length = xs.length
+    val encodingByChar = Huffman.codeBits(Huffman.treeToEncodeTable(codeTree))_
+
+    "Char\tWeight\tProb.\tEncoding\n" +
+    (for {
+      (char, weight) <- Huffman.times(xs).sortBy(_._2).reverse
+      wl = s"$weight/$length"
+      bs = encodingByChar(char).mkString
+      //p = s"${scala.math.pow(2.0,-bs.length)}"
+      p = s"1/${1 << bs.length}"
+    } yield s"$char: \t $wl \t $p \t $bs\n").mkString //("\n")
+  }
+  /**
+   * Current issue with using different trees texts
+   * is that a list of bits which terminates at a leaf in one tree
+   * may terminate at a fork in another
+   */
+  /*
+  def quickEncode(tree: CodeTree)(text: List[Char]): List[List[Bit]] = {
+    val codeMap = Map(treeToEncodeTable(tree):_*)
+    text map (c => codeMap(c))
+  }
+
+  type DecodeTable = List[(List[Bit], Char)]
+
+  def treeToDecodeTable(tree: CodeTree): DecodeTable =
+    treeToEncodeTable(tree) map {case (char, bitList) => (bitList, char)}
+
+  //def createCodeTree(chars: List[Char])(targetOrder: List[CodeTree] => Boolean): CodeTree = {
+  //def quickDecode(tree: CodeTree, chars: List[Char])(bits: List[Bit]): List[Char] = {
+  def quickDecode(encTab: EncodeTable, chars: List[Char])(bits: List[Bit]): List[Char] = {
+    val codeMap =
+    val codeMap = Map(treeToDecodeTable(tree):_*)
+    bits map (b => codeMap(b))
+  }
+  */
   /** Test Case */
   val frenchCode: CodeTree = Fork(Fork(Fork(Leaf('s',121895),Fork(Leaf('d',56269),Fork(Fork(Fork(Leaf('x',5928),Leaf('j',8351),List('x','j'),14279),Leaf('f',16351),List('x','j','f'),30630),Fork(Fork(Fork(Fork(Leaf('z',2093),Fork(Leaf('k',745),Leaf('w',1747),List('k','w'),2492),List('z','k','w'),4585),Leaf('y',4725),List('z','k','w','y'),9310),Leaf('h',11298),List('z','k','w','y','h'),20608),Leaf('q',20889),List('z','k','w','y','h','q'),41497),List('x','j','f','z','k','w','y','h','q'),72127),List('d','x','j','f','z','k','w','y','h','q'),128396),List('s','d','x','j','f','z','k','w','y','h','q'),250291),Fork(Fork(Leaf('o',82762),Leaf('l',83668),List('o','l'),166430),Fork(Fork(Leaf('m',45521),Leaf('p',46335),List('m','p'),91856),Leaf('u',96785),List('m','p','u'),188641),List('o','l','m','p','u'),355071),List('s','d','x','j','f','z','k','w','y','h','q','o','l','m','p','u'),605362),Fork(Fork(Fork(Leaf('r',100500),Fork(Leaf('c',50003),Fork(Leaf('v',24975),Fork(Leaf('g',13288),Leaf('b',13822),List('g','b'),27110),List('v','g','b'),52085),List('c','v','g','b'),102088),List('r','c','v','g','b'),202588),Fork(Leaf('n',108812),Leaf('t',111103),List('n','t'),219915),List('r','c','v','g','b','n','t'),422503),Fork(Leaf('e',225947),Fork(Leaf('i',115465),Leaf('a',117110),List('i','a'),232575),List('e','i','a'),458522),List('r','c','v','g','b','n','t','e','i','a'),881025),List('s','d','x','j','f','z','k','w','y','h','q','o','l','m','p','u','r','c','v','g','b','n','t','e','i','a'),1486387)
   // huffmanestcool

@@ -1,5 +1,6 @@
 import scala.swing._
 import scala.swing.BorderPanel.Position._
+import javax.swing.ScrollPaneConstants._
 import scala.swing.FileChooser._
 import event._
 import scala.io.Source
@@ -11,7 +12,7 @@ object StegaUI extends SimpleSwingApplication {
 
   val plainText = new TextArea(20, 60) { editable = false }
   val encodedText = new TextArea(20, 60) { editable = false }
-  val decodedText = new TextField {
+  val inputText = new TextField {
     text = "Enter message here"
     listenTo(keys)
     reactions += {
@@ -23,9 +24,19 @@ object StegaUI extends SimpleSwingApplication {
   var xs: List[Char] = Nil
 
   def writeEncoded(): Unit = {
-    val codeTree = Huffman.createCodeTree(xs)(Huffman.singleton)
-    val encoderFunc = Huffman.quickEncode(codeTree)_
-    encodedText.text = encoderFunc(decodedText.text.toList).mkString.sliding(32, 32).toList.mkString("\n") + "\n"*5 + Huffman.decodedSecret.mkString
+    val mimickedCodeTree = Huffman.createCodeTree(xs)(Huffman.singleton)
+
+    val inputCharList = inputText.text.toList
+    val mimickerCodeTree = Huffman.createCodeTree(inputCharList)(Huffman.singleton)
+    val mimickerBits = Huffman.quickEncode(mimickerCodeTree)(inputCharList)
+
+    //encodedText.text = mimickerBits.toString
+
+    val a = Huffman.decode(mimickedCodeTree, mimickerBits).mkString
+    val b = "\n"*5 + Huffman.decodedSecret.mkString
+    encodedText.text = a + b + "\n"*5 + Huffman.charByWeightAndEncoding(xs)
+    //val encoderFunc = Huffman.quickEncode(mimickedCodeTree)_
+    //encodedText.text = encoderFunc(inputText.text.toList).mkString.sliding(32, 32).toList.mkString("\n") + "\n"*5 + Huffman.decodedSecret.mkString
   }
 
   def open(): Unit = {
@@ -35,7 +46,7 @@ object StegaUI extends SimpleSwingApplication {
       src.close()
 
       plainText.text = lines.mkString("\n")
-      xs = lines.mkString.trim.toList
+      xs = lines.mkString.trim.filter(c => c.isLetterOrDigit || c == ' ').toLowerCase.toList
       writeEncoded()
     }
   }
@@ -52,10 +63,15 @@ object StegaUI extends SimpleSwingApplication {
       contents += fileMenu
     }
 
+    case class CustomScroll(txtArea: TextArea) extends ScrollPane(txtArea) {
+      horizontalScrollBarPolicy = ScrollPane.BarPolicy.AsNeeded
+    }
+
     contents = new BorderPanel {
       layout(new ScrollPane(plainText)) = East
       layout(new ScrollPane(encodedText)) = West
-      layout(new ScrollPane(decodedText)) = South
+      layout(CustomScroll(encodedText)) = West
+      layout(new ScrollPane(inputText)) = South
     }
   }
 }
