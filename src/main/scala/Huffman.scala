@@ -44,6 +44,7 @@ import scala.annotation.tailrec
  * 1. Need to make it so that I can break files into variable length blocks,
  *      not just break it into characters
  */
+
 object Huffman {
 
   abstract class CodeTree
@@ -119,19 +120,18 @@ object Huffman {
    */
 
   def decode(tree: CodeTree, bits: List[Bit]): List[Char] = {
-    def decoder(t: CodeTree, b: List[Bit]): List[Char] = t match {
-      case Fork(left, right, chars, _) =>
-        b match {
-          case Nil => "_TYLER_".toList ::: chars
-          case head :: tail =>
-            if (head == 0) decoder(left, tail)
-            else decoder(right, tail)
-        }
-      case Leaf(char, _) =>
-        b match {
-          case head :: tail => char :: decoder(tree, b)
-          case Nil => char :: Nil
-        }
+    def decoder(subTree: CodeTree, subBits: List[Bit]): List[Char] = (subTree, subBits) match {
+      case (Fork(leftTree, rightTree, chars, _), head :: tail) =>
+        if (head == 0)
+          decoder(leftTree, tail)
+        else
+          decoder(rightTree, tail)
+      case (Fork(leftTree, rightTree, chars, _), Nil) =>
+        chars
+      case (Leaf(char, _), head :: tail) =>
+        char :: decoder(tree, subBits)
+      case (Leaf(char, _), Nil) =>
+        char :: Nil
     }
     decoder(tree, bits)
   }
@@ -174,6 +174,7 @@ object Huffman {
     case Nil => Nil
   }
 
+  // aka convert
   def treeToEncodeTable(tree: CodeTree): EncodeTable = {
     def helper(t: CodeTree, acc: List[Bit]): EncodeTable = t match {
       case Fork(l, r, chars, _) =>
@@ -191,19 +192,25 @@ object Huffman {
     text flatMap (c => codeMap(c))
   }
 
+
+  /**
+   * UTILITIES
+   */
+
   def charByWeightAndEncoding(xs: List[Char]): String = {
     val codeTree = Huffman.createCodeTree(xs)(Huffman.singleton)
     val length = xs.length
     val encodingByChar = Huffman.codeBits(Huffman.treeToEncodeTable(codeTree))_
 
-    "Char\tWeight\tProb.\tEncoding\n" +
+    "Char\tWeight\tProb.*\tEncoding\n" +
     (for {
       (char, weight) <- Huffman.times(xs).sortBy(_._2).reverse
       wl = s"$weight/$length"
       bs = encodingByChar(char).mkString
-      //p = s"${scala.math.pow(2.0,-bs.length)}"
       p = s"1/${1 << bs.length}"
-    } yield s"$char: \t $wl \t $p \t $bs\n").mkString //("\n")
+    } yield s"$char: \t $wl \t $p \t $bs\n").mkString +
+    "\n\n" +
+    "* => Probability of occurrence given random bit list."
   }
   /**
    * Current issue with using different trees texts
