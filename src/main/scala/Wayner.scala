@@ -1,4 +1,5 @@
 import Huffman._
+import scala.annotation.tailrec
 import scala.util.Random
 
 object Wayner {
@@ -24,17 +25,17 @@ object Wayner {
   def createMimicFunction(table: SubstringTable): MimicFunction = {
     (for {
       (subStr, xs) <- table
-      orderedLeaves = Huffman.makeOrderedLeafList(xs)
-      codeTree = Huffman.until(Huffman.singleton, Huffman.combine)(orderedLeaves).head
+      orderedLeaves = makeOrderedLeafList(xs)
+      codeTree = Huffman.until(singleton, combine)(orderedLeaves).head
     } yield (subStr, codeTree)).toMap
   }
 
-  def createBitList(input: String): List[Huffman.Bit] = {
+  def createBitList(input: String): List[Bit] = {
     val bitStr = input flatMap (c => c.toInt.toBinaryString)
     (bitStr  map{ case '1' => 1; case '0' => 0 }).toList
   }
 
-  def shallowEncoder(tree: CodeTree, bits: List[Bit]): (String, List[Huffman.Bit]) = (tree, bits) match {
+  def shallowEncoder(tree: CodeTree, bits: List[Bit]): (String, List[Bit]) = (tree, bits) match {
       case (Fork(leftTree, rightTree, chars, _), head :: tail) =>
         if (head == 0)
           shallowEncoder(leftTree, tail)
@@ -49,10 +50,12 @@ object Wayner {
         else
           shallowEncoder(rightTree, Nil)
 
+      // once we reach a leaf we return
       case (Leaf(char, w), xs) =>
         (char.toString, xs)
   }
 
+  @tailrec
   def encode(seed: String, bits: List[Bit], mimFunc: MimicFunction): String = {
     if (bits.isEmpty)
       seed

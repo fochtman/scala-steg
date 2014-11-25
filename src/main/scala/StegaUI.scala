@@ -23,16 +23,36 @@ object StegaUI extends SimpleSwingApplication {
 
   var xs: List[Char] = Nil
 
-  def writeEncoded(): Unit = {
-    val mimickedCodeTree = Huffman.createCodeTree(xs)(Huffman.singleton)
-
+  // takes typed input and translates it into msg
+  def getMsg(mimickedCodeTree: Huffman.CodeTree): String = {
     val inputCharList = inputText.text.toList
     val mimickerCodeTree = Huffman.createCodeTree(inputCharList)(Huffman.singleton)
     val mimickerBits = Huffman.quickEncode(mimickerCodeTree)(inputCharList)
+    Huffman.decode(mimickedCodeTree, mimickerBits).mkString
+  }
 
-    val msg = Huffman.decode(mimickedCodeTree, mimickerBits).mkString
+  def writeEncoded(): Unit = {
+    val mimickedCodeTree = Huffman.createCodeTree(xs)(Huffman.singleton)
+
+    val msg = getMsg(mimickedCodeTree)
+
     val txtStatistics = Huffman.charByWeightAndEncoding(xs)
-    encodedText.text = msg + "\n\n" + txtStatistics
+
+    // exp. w/ mimicfunctions
+    val sst = Wayner.nthOrderFrequencies(5, xs.mkString)
+    val mf = Wayner.createMimicFunction(sst)
+    val mfStr = mf.mkString("\n")
+
+    // use mimic functions
+    val bits = Wayner.createBitList(inputText.text)
+    val seed = "Venus"
+    //val seed = "with closed eyes"
+    //val seed = "Say first"
+    //val seed = "#include"
+    val resu = Wayner.encode(seed, bits, mf)
+
+    encodedText.text = (resu.split(" ")).toList.sliding(4, 4).map(_.mkString(" ")).mkString("\n")
+    //encodedText.text = msg + "\n\n" + txtStatistics + "\n\n" + mfStr
     encodedText.caret.position = 0
   }
 
@@ -45,7 +65,8 @@ object StegaUI extends SimpleSwingApplication {
       plainText.text = lines.mkString("\n")
       plainText.caret.position = 0
 
-      xs = lines.mkString.trim.filter(c => c.isLetterOrDigit || c == ' ').toLowerCase.toList
+      //xs = lines.mkString.trim.filter(c => c.isLetterOrDigit || c == ' ').toLowerCase.toList
+      xs = lines.mkString.trim.toList
       writeEncoded()
     }
   }
