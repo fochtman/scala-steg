@@ -1,10 +1,11 @@
-
+import Huffman._
+import scala.util.Random
 
 object Wayner {
 
-  abstract class MimicFunction
-
-  type SubstringTable = Map[String, List[(Char, Int)]]
+  type Substring = String
+  type MimicFunction = Map[Substring, Huffman.CodeTree]
+  type SubstringTable = Map[Substring, List[(Char, Int)]]
 
   /**
    * p(t, a, A): probability that a character 'a' follows a substring 't' in A
@@ -19,5 +20,51 @@ object Wayner {
         Huffman.times(xs map(str =>
           str(n))))
   }
+
+  def createMimicFunction(table: SubstringTable): MimicFunction = {
+    (for {
+      (subStr, xs) <- table
+      orderedLeaves = Huffman.makeOrderedLeafList(xs)
+      codeTree = Huffman.until(Huffman.singleton, Huffman.combine)(orderedLeaves).head
+    } yield (subStr, codeTree)).toMap
+  }
+
+  def createBitList(input: String): List[Huffman.Bit] = {
+    val bitStr = input flatMap (c => c.toInt.toBinaryString)
+    (bitStr  map{ case '1' => 1; case '0' => 0 }).toList
+  }
+
+  def shallowEncoder(tree: CodeTree, bits: List[Bit]): (String, List[Huffman.Bit]) = (tree, bits) match {
+      case (Fork(leftTree, rightTree, chars, _), head :: tail) =>
+        if (head == 0)
+          shallowEncoder(leftTree, tail)
+        else
+          shallowEncoder(rightTree, tail)
+
+      // padding
+      case (Fork(leftTree, rightTree, chars, _), Nil) =>
+        val randomBit = Random.nextInt(2)
+        if (randomBit == 0)
+          shallowEncoder(leftTree, Nil)
+        else
+          shallowEncoder(rightTree, Nil)
+
+      case (Leaf(char, w), xs) =>
+        (char.toString, xs)
+  }
+
+  def encode(seed: String, bits: List[Bit], mimFunc: MimicFunction): String = {
+    if (bits.isEmpty)
+      seed
+    else {
+      val keyLength = mimFunc.keys.head.length
+      val keySeed = seed.drop(seed.length - keyLength)
+      val codeTree = mimFunc(keySeed)
+      val (result, remainingBits) = shallowEncoder(codeTree, bits)
+      encode(seed + result, remainingBits, mimFunc)
+    }
+  }
+  // import scala.util.Random
+  // val binaryStream = Stream(Random.nextInt(2))
 
 }
