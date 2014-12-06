@@ -5,58 +5,72 @@ import scala.swing.BorderPanel.Position._
 import event._
 import scala.io.Source
 import scala.swing.Orientation._
+import java.awt.Color._
 object StegaUI extends SimpleSwingApplication {
 
   def top = new MainFrame {
     title = "Scala Steganography"
 
-    menuBar = new MenuBar {
+    menuBar = new MenuBar with compColor {
+      background = DARK_GRAY
       contents += fileMenu
     }
 
-    contents = new BorderPanel {
+    contents = new BorderPanel with compColor {
       layout(subPanel) = Center
       layout(inputPanel) = South
     }
-
     font = consolasFont
+    background = ivoryBlack
+    foreground = yellowOchre
   }
+
 
   val chooser = new FileChooser
 
-  val consolasFont = new Font("Consolas", java.awt.Font.PLAIN, 12)
+  val consolasFont = new Font("Consolas", java.awt.Font.PLAIN, 16)
+  val ivoryBlack = new Color(40, 36, 34)
+  val yellowOchre = new Color(245, 197, 44)
+  val cadmiumRedMedium = new Color(196, 1, 45)
 
-  val plainText = new TextArea(20, 40) {
+  trait compColor extends Component {
+    font = consolasFont
+    background = ivoryBlack
+    foreground = yellowOchre
+  }
+
+
+  val plainText = new TextArea(20, 40) with compColor {
     editable = false
     wordWrap = true
-    font = consolasFont
   }
-  val encodedText = new TextArea(20, 40) {
-    peer.setAlignmentX(0)
+
+  val encodedText = new TextArea(20, 40) with compColor {
     editable = false
     wordWrap = true
-    font = consolasFont
   }
 
-  val subPanel = new SplitPane(Vertical, new ScrollPane(encodedText), new ScrollPane(plainText)) {
-    border = new EmptyBorder(8, 8, 8, 8)
+  val subPanel = new SplitPane(Vertical, new ScrollPane(encodedText), new ScrollPane(plainText)) with compColor {
+    //border = Swing.MatteBorder(15, 10, 10, 10, java.awt.Color.DARK_GRAY)
+    //border = new EmptyBorder(8, 8, 8, 8)
+    dividerSize = 3
+    //peer.setBackground(ivoryBlack)
+    peer.setDividerLocation(0.5f)
+
   }
 
-  val randomSeed = new Button {
+  val randomSeed = new Button with compColor {
     text = "RND SEED"
-    font = consolasFont
     enabled = true
   }
-  val inputSeed = new TextField {
-    columns = 74
-    font = consolasFont
+  val inputSeed = new TextField with compColor {
     text = "select substring from loaded text"
+    columns = 74
   }
 
-  val inputMsg = new TextField {
-    columns = 75
-    font = consolasFont
+  val inputMsg = new TextField with compColor {
     text = "type msg here, then hit enter"
+    columns = 75
     listenTo(keys)
     reactions += {
       case KeyPressed(_, Key.Enter, _, _) =>
@@ -64,19 +78,20 @@ object StegaUI extends SimpleSwingApplication {
     }
   }
 
-  val seedLength = 6
-  val arrow =  new String(Character.toChars(8594))
-  val msgPanel = new FlowPanel(FlowPanel.Alignment.Center)(new Label{text = "MSG "+arrow; font = consolasFont}, inputMsg)
-  val seedPanel = new FlowPanel(FlowPanel.Alignment.Center)(new Label{text = "SEED "+arrow; font = consolasFont}, inputSeed, randomSeed)
+  val seedLength = new ComboBox(1 to 20) { peer.setSelectedIndex(9) }
 
-  val inputPanel = new BorderPanel {
+  val arrow =  new String(Character.toChars(8594))
+  val msgPanel = new FlowPanel(FlowPanel.Alignment.Center)(new Label with compColor {text = "MSG "+arrow}, inputMsg) with compColor
+  val seedPanel = new FlowPanel(FlowPanel.Alignment.Center)(new Label with compColor {text = "SEED "+arrow}, inputSeed, randomSeed, seedLength) with compColor
+
+  val inputPanel = new BorderPanel with compColor {
     layout(seedPanel) = North
     layout(msgPanel) = South
     listenTo(randomSeed)
     reactions += {
       case ButtonClicked(`randomSeed`) =>
         val x = scala.util.Random.nextInt(plainText.text.length)
-        val subStr = plainText.text.substring(x, x + seedLength)
+        val subStr = plainText.text.substring(x, x + seedLength.selection.item)
         inputSeed.text = subStr
     }
   }
@@ -94,14 +109,31 @@ object StegaUI extends SimpleSwingApplication {
   def writeEncoded(): Unit = {
     //val txtStatistics = Huffman.charByWeightAndEncoding(xs)
 
-    val sst = Wayner.nthOrderFrequencies(seedLength, xs.mkString("\n"))
-    val mf = Wayner.createMimicFunction(sst)
+    val sst = Wayner.nthOrderFrequencies(seedLength.selection.item, xs.mkString("\n"))
+    val mf: Wayner.MimicFunction = Wayner.createMimicFunction(sst)
 
     val bits = Wayner.createBitList(inputMsg.text)
     val seed = inputSeed.text
     val resu = Wayner.encode(seed, bits, mf)
 
-    encodedText.text = resu
+    val xss = for {
+      subStr: String <- resu.split("\n").toList
+    } yield {
+      if (subStr.length > 100) {
+        val subXs = subStr.toVector
+        var splitPoint = subXs.length / 2
+        var c = subXs(splitPoint)
+        while (c != ' ') {
+          splitPoint += 1
+          c = subXs(splitPoint)
+        }
+        val (left, right) = subXs.splitAt(splitPoint)
+        left.mkString + "\n" + right.mkString
+      } else
+        subStr
+    }
+
+    encodedText.text = xss.mkString("\n")
     encodedText.caret.position = 0
   }
 
@@ -122,13 +154,11 @@ object StegaUI extends SimpleSwingApplication {
       plainText.text = lines.mkString("\n")
       plainText.caret.position = 0
 
-      //xs = (lines map(_.reverse)) //::: lines
       xs = lines
     }
   }
 
   def fileMenu = new Menu("File") {
-    font = consolasFont
     contents += new MenuItem(Action("Open") {open()})
     contents += new MenuItem(Action("Exit") {sys.exit(0)})
   }

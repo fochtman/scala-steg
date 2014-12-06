@@ -70,12 +70,6 @@ object Huffman {
 
   def string2Chars(str: String): List[Char] = str.toList
 
-  /*
-  //TODO FINISH THIS THOUGHT
-  def processChars(chars: List[Char]): List[String] =
-    chars.sliding(variableOne, variableTwo).toList map(_.mkString)
-  */
-
   def times(chars: List[Char]): List[(Char, Int)] =
     (chars groupBy(c => c) map {case (c, xs) => (c, xs.length)}).toList
 
