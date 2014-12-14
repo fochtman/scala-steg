@@ -35,84 +35,117 @@ object Wayner {
     (bitStr  map{ case '1' => 1; case '0' => 0 }).toList
   }
 
+  def decodeBits(xs: List[Bit]): String = {
+    val strVecs = xs.sliding(7,7).toVector.map(_.mkString)
+    strVecs.foreach(println)
+    val res = strVecs map(s => Integer.parseInt(s, 2).toChar)
+    res.mkString
+  }
+
+  case class Dim(rows: Int, cols: Int)
+  case class BitVector(v: Vector[Bit], asInt: Int, asStr: String)
+  case class BitMatrix(vectors: Vector[BitVector], dim: Dim)
+
+  def f(a: BitVector, cols: Int): Int = {
+    val ones = Integer.parseInt("1"*cols, 2)
+    val i = a.asInt
+    ((i << 1) & ones) ^ i ^ (i >> 1)
+  }
+
+  def makeVectorOfZeros(matrix: BitMatrix): BitVector = {
+    val len = matrix.dim.cols
+    val zeros = Vector.fill(len)(0)
+    BitVector(zeros, 0, "0" * len)
+  }
+
+  def makeBitString(i: Int, len: Int): String = {
+    val asStr = i.toBinaryString
+    if (asStr.length < len)
+      asStr.reverse.padTo(len, "0").reverse.mkString
+    else
+      asStr
+  }
+
+  def makeNextRow(r0: BitVector, r1: BitVector, cols: Int): BitVector = {
+    val asInt = f(r1, cols) ^ r0.asInt
+    val asStr = makeBitString(asInt, cols)
+    val asVec = (asStr map { case '1' => 1; case '0' => 0}).toVector
+    BitVector(asVec, asInt, asStr)
+  }
+
   def analyzeBitList(bits: List[Bit]): Unit = {
 
-    val bitVector = bits.toVector
+
     val len = bits.length
-    val factors: Vector[(Int, Int)] =
+    val factors: Vector[Dim] =
       for {
         i <- (2 to len - 1).toVector
         if len % i == 0
-      } yield (i, len / i)
+      } yield Dim(len / i, i)
 
-    //type BitMatrix = Vector[Vector[Bit]]
-    case class BitVector(v: Vector[Bit], asInt: Int, asStr: String, len: Int)
-    type BitMatrix = Vector[BitVector]
     val matrices: Vector[BitMatrix] =
       for {
-        (rows, cols) <- factors
+        Dim(rows, cols) <- factors
       // to find all permutations add arg.permutations.toVector
       } yield {
-        val matrix = bitVector.sliding(rows, rows).toVector
-        matrix map(vec => {
-          val s = vec.mkString
-          val i = Integer.parseInt(s, 2)
-          BitVector(vec, i, s, rows)
-        })
-      }
-
-    for (m <- matrices; v <- m) println(v.asStr)
-
-    val zeroVec = {
-      val aVec = matrices(0)(0)
-      val len = aVec.len
-      val zeros = Vector.fill(len)(0)
-      BitVector(zeros, 0, "0"*len, len)
-    }
-
-    def f(a: BitVector): Int = {
-      val ones = ("1"*a.len).toInt
-      val i = a.asInt
-      ((i << 1) & ones) ^ i ^ (i >> 1)
-    }
-
-    def makeBitString(i: Int, len: Int): String = {
-      val asStr = i.toBinaryString
-      if (asStr.length != len)
-        asStr.reverse.padTo(len, "0").reverse.mkString
-      else
-        asStr
-    }
-
-    val initVec = matrices(0)(0)
-    val mutMap = scala.collection.mutable.Map[Int, BitVector](0 -> zeroVec, 1 -> initVec)
-
-    val compMat =
-      for (j <- (1 to matrices(0).length).toVector) yield {
-        val asInt = f(mutMap(j)) ^ mutMap(j - 1).asInt
-        val asStr = makeBitString(asInt, mutMap(j).len)
-        val asVec = (asStr map { case '1' => 1; case '0' => 0}).toVector
-        val nextRow = BitVector(asVec, asInt, asStr, asStr.length)
-        mutMap += (j+1) -> nextRow
-        mutMap(j)
+        val vectors = bits.toVector.sliding(cols, cols).toVector
+        val matrix =
+          vectors map(vec => {
+            val s = vec.mkString
+            val i = Integer.parseInt(s, 2)
+            BitVector(vec, i, s)
+          })
+        BitMatrix(matrix, Dim(rows, cols))
       }
 
 
+    val mutMap = scala.collection.mutable.Map[Int, BitVector]()
 
-    //println("\ncompMat: ")
-    //compMat.foreach(println)
-    println(matrices(0)==compMat)
+    val intermediateMatrices: Vector[BitMatrix] =
+      for (matrix <- matrices) yield {
+        val zeros = makeVectorOfZeros(matrix)
+        val initialRow = matrix.vectors(0)
+        mutMap += 0 -> zeros
+        mutMap += 1 -> initialRow
+        val Dim(rowCount, colCount) = matrix.dim
+        val intermediateVectors: Vector[BitVector] =
+          for (j <- (1 to rowCount + 1).toVector) yield {
+            val lastRow = mutMap(j - 1)
+            val thisRow = mutMap(j)
+            val nextRow = makeNextRow(lastRow, thisRow, colCount)
+            mutMap += (j + 1) -> nextRow
+            thisRow
+          }
+        mutMap.clear()
+        BitMatrix(intermediateVectors, matrix.dim)
+      }
 
+    def checkMatrixDimensions(matrix: BitMatrix): Boolean = {
+      val rowValues = (matrix.vectors map(vec => vec.v.length)).distinct
+      val last = matrix.vectors.last.v
+      if (rowValues.length == 1 && last.forall(_ == 0)) true
+      else false
+    }
 
-    println(bits)
-    println(factors)
-    /*
-    def func(xs: List[String]): Boolean = {
-      val v = c(xs:_*)
-      val l = xs.head.length
-      val m = Map[Int, Int](-1 -> 0)
-      val r = (v zipWithIndex).map{ case(i, j) => {m(j) = f(i, l) ^ m(j-1); f(i, l) ^ m(j-1)} }
-      */
+    val results =
+      for {
+        (matrix,index) <- intermediateMatrices.zipWithIndex
+        if checkMatrixDimensions(matrix)
+        dims = matrix.dim
+        vecs = matrix.vectors.take(dims.rows)
+        //if vecs == matrices(index).vectors
+      } yield BitMatrix(vecs, dims)
+
+    intermediateMatrices.foreach(println)
+    println("RESULTS => ")
+    results.foreach(r => println(r, r.vectors.length))
+
+    for (r <- intermediateMatrices) { //results) {
+      val v = r.vectors
+      val bigVec = v flatMap(_.v)
+      decodeBits(bigVec.toList)
+    }
+
   }
 
   def shallowEncoder(tree: CodeTree, bits: List[Bit]): (String, List[Bit]) = (tree, bits) match {
