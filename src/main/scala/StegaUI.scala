@@ -1,5 +1,3 @@
-import javax.swing.border.EmptyBorder
-
 import scala.swing._
 import scala.swing.BorderPanel.Position._
 import event._
@@ -9,13 +7,12 @@ import java.awt.Color._
 object StegaUI extends SimpleSwingApplication {
 
   def top = new MainFrame {
-    title = "Scala Steganography"
+    title = "scala-steg"
 
     menuBar = new MenuBar with compColor {
       background = DARK_GRAY
       contents += fileMenu
     }
-
     contents = new BorderPanel with compColor {
       layout(subPanel) = Center
       layout(inputPanel) = South
@@ -25,9 +22,7 @@ object StegaUI extends SimpleSwingApplication {
     foreground = yellowOchre
   }
 
-
   val chooser = new FileChooser
-
   val consolasFont = new Font("Consolas", java.awt.Font.PLAIN, 16)
   val ivoryBlack = new Color(40, 36, 34)
   val yellowOchre = new Color(245, 197, 44)
@@ -38,7 +33,6 @@ object StegaUI extends SimpleSwingApplication {
     background = ivoryBlack
     foreground = yellowOchre
   }
-
 
   val plainText = new TextArea(20, 40) with compColor {
     editable = false
@@ -51,23 +45,29 @@ object StegaUI extends SimpleSwingApplication {
   }
 
   val subPanel = new SplitPane(Vertical, new ScrollPane(encodedText), new ScrollPane(plainText)) with compColor {
-    //border = Swing.MatteBorder(15, 10, 10, 10, java.awt.Color.DARK_GRAY)
-    //border = new EmptyBorder(8, 8, 8, 8)
     dividerSize = 3
-    //peer.setBackground(ivoryBlack)
     peer.setDividerLocation(0.5f)
-
   }
 
-  val randomSeed = new Button with compColor {
-    text = "RND SEED"
-    enabled = true
-  }
+  // a constant used in the seed and msg panels
+  val arrow =  new String(Character.toChars(8594))
+
+  // seedPanel parameters, begin
+  val seedPanelLabel = new Label with compColor { text = s"SEED $arrow" }
   val inputSeed = new TextField with compColor {
     text = "select substring from loaded text"
     columns = 74
   }
+  val randomSeed = new Button with compColor {
+    text = "RND SEED"
+    enabled = true
+  }
+  val seedLength = new ComboBox(1 to 20) { peer.setSelectedIndex(9) }
+  val seedPanel = new FlowPanel(FlowPanel.Alignment.Center)(seedPanelLabel, inputSeed, randomSeed, seedLength) with compColor
+  // seedPanel parameters, end
 
+  // msgPanel parameters, begin
+  val msgPanelLabel = new Label with compColor { text = s"MSG $arrow" }
   val inputMsg = new TextField with compColor {
     text = "type msg here, then hit enter"
     columns = 75
@@ -77,12 +77,8 @@ object StegaUI extends SimpleSwingApplication {
         writeEncoded()
     }
   }
-
-  val seedLength = new ComboBox(1 to 20) { peer.setSelectedIndex(9) }
-
-  val arrow =  new String(Character.toChars(8594))
-  val msgPanel = new FlowPanel(FlowPanel.Alignment.Center)(new Label with compColor {text = "MSG "+arrow}, inputMsg) with compColor
-  val seedPanel = new FlowPanel(FlowPanel.Alignment.Center)(new Label with compColor {text = "SEED "+arrow}, inputSeed, randomSeed, seedLength) with compColor
+  val msgPanel = new FlowPanel(FlowPanel.Alignment.Center)(msgPanelLabel, inputMsg) with compColor
+  // msgPanel parameters, end
 
   val inputPanel = new BorderPanel with compColor {
     layout(seedPanel) = North
@@ -98,7 +94,15 @@ object StegaUI extends SimpleSwingApplication {
 
   var xs: List[String] = Nil
 
-  // takes typed input and translates it into msg
+  /**
+   * Takes user input and encodes it based on the statistical profile
+   * of the loaded text. In this case we derive the profile via Huffman
+   * compression.
+   *
+   * Currently this method isn't used, but serves as an example of what
+   * Wayner's mimic functions do (leaving out some details) for every
+   * n-length substring of the loaded text.
+   */
   def getMsg(mimickedCodeTree: Huffman.CodeTree): String = {
     val inputCharList = inputMsg.text.toList
     val mimickerCodeTree = Huffman.createCodeTree(inputCharList)(Huffman.singleton)
@@ -106,13 +110,19 @@ object StegaUI extends SimpleSwingApplication {
     Huffman.decode(mimickedCodeTree, mimickerBits).mkString
   }
 
-  def writeEncoded(): Unit = {
-    //val txtStatistics = Huffman.charByWeightAndEncoding(xs)
+  def checkBits(): Unit = {
+    val bits = (inputMsg.text  map{ case '1' => 1; case '0' => 0 }).toList
+    Wayner.analyzeBitList(bits)
+  }
 
+  def writeEncoded(): Unit = {
     val sst = Wayner.nthOrderFrequencies(seedLength.selection.item, xs.mkString("\n"))
     val mf: Wayner.MimicFunction = Wayner.createMimicFunction(sst)
-
     val bits = Wayner.createBitList(inputMsg.text)
+
+    println(Wayner.decodeBits(bits))
+    //Wayner.analyzeBitList(bits)
+
     val seed = inputSeed.text
     val resu = Wayner.encode(seed, bits, mf)
 
@@ -133,18 +143,14 @@ object StegaUI extends SimpleSwingApplication {
         subStr
     }
 
-    encodedText.text = xss.mkString("\n")
+    val sizeResult = resu.toList.length * 16
+    val sizeSeed = inputSeed.text.length * 16
+    val sizeMsg = inputMsg.text.length * 16
+    val str = s"msg: $sizeMsg\nseed: $sizeSeed\nresult: $sizeResult\n"
+    encodedText.text = str + xss.mkString("\n")
     encodedText.caret.position = 0
   }
 
-  /*
-  for reading files look into:
-  import java.nio.file.{Files, FileSystems}
-  import java.nio.charset.StandCharsets.UTF_8
-  val path = FileSystems.getDefault().getPath(".", fileName)
-  val lines = Files.readAllLines(path, UTF_8)
-  val final = lines.toArray map(_.toString)
-   */
   def open(): Unit = {
     if (chooser.showOpenDialog(plainText) == FileChooser.Result.Approve) {
       val src = Source.fromFile(chooser.selectedFile)
